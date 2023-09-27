@@ -136,8 +136,8 @@ void GtpTask::handleSessionRelease(int ueId, int psi)
     uint64_t sessionInd = MakeSessionResInd(ueId, psi);
 
     // Remove all session information from rate limiter
-    m_rateLimiter->updateSessionUplinkLimit(sessionInd, 0);
-    m_rateLimiter->updateUeDownlinkLimit(ueId, 0);
+    //m_rateLimiter->updateSessionUplinkLimit(sessionInd, 0);
+    //m_rateLimiter->updateUeDownlinkLimit(ueId, 0);
 
     // And remove from PDU session table
     if (m_pduSessions.count(sessionInd))
@@ -159,8 +159,8 @@ void GtpTask::handleUeContextDelete(int ueId)
     for (auto &session : sessions)
     {
         // Remove all session information from rate limiter
-        m_rateLimiter->updateSessionUplinkLimit(session, 0);
-        m_rateLimiter->updateUeDownlinkLimit(ueId, 0);
+        //m_rateLimiter->updateSessionUplinkLimit(session, 0);
+        //m_rateLimiter->updateUeDownlinkLimit(ueId, 0);
 
         // And remove from PDU session table
         uint32_t teid = m_pduSessions[session]->downTunnel.teid;
@@ -171,8 +171,8 @@ void GtpTask::handleUeContextDelete(int ueId)
     }
 
     // Remove all user information from rate limiter
-    m_rateLimiter->updateUeUplinkLimit(ueId, 0);
-    m_rateLimiter->updateUeDownlinkLimit(ueId, 0);
+    //m_rateLimiter->updateUeUplinkLimit(ueId, 0);
+    //m_rateLimiter->updateUeDownlinkLimit(ueId, 0);
 
     // Remove UE context
     m_ueContexts.erase(ueId);
@@ -196,7 +196,7 @@ void GtpTask::handleUplinkData(int ueId, int psi, OctetString &&pdu)
 
     auto &pduSession = m_pduSessions[sessionInd];
 
-    if (m_rateLimiter->allowUplinkPacket(sessionInd, static_cast<int64_t>(pdu.length())))
+    //if (m_rateLimiter->allowUplinkPacket(sessionInd, static_cast<int64_t>(pdu.length())))
     {
         gtp::GtpMessage gtp{};
         gtp.payload = std::move(pdu);
@@ -224,44 +224,26 @@ void GtpTask::handleUdpReceive(const udp::NwUdpServerReceive &msg)
     OctetView buffer{msg.packet};
     auto gtp = gtp::DecodeGtpMessage(buffer);
 
-    switch (gtp->msgType)
+    auto sessionInd = m_sessionTree.findByDownTeid(gtp->teid);
+    if (sessionInd == 0)
     {
-    case gtp::GtpMessage::MT_G_PDU: {
-        auto sessionInd = m_sessionTree.findByDownTeid(gtp->teid);
-        if (sessionInd == 0)
-        {
-            m_logger->err("TEID %d not found on GTP-U Downlink", gtp->teid);
-            return;
-        }
-
-        if (m_rateLimiter->allowDownlinkPacket(sessionInd, gtp->payload.length()))
-        {
-            auto w = std::make_unique<NmGnbGtpToRls>(NmGnbGtpToRls::DATA_PDU_DELIVERY);
-            w->ueId = GetUeId(sessionInd);
-            w->psi = GetPsi(sessionInd);
-            w->pdu = std::move(gtp->payload);
-            m_base->rlsTask->push(std::move(w));
-        }
+        m_logger->err("TEID %d not found on GTP-U Downlink", gtp->teid);
         return;
     }
-    case gtp::GtpMessage::MT_ECHO_REQUEST: {
-        gtp::GtpMessage gtpResponse{};
-        gtpResponse.msgType = gtp::GtpMessage::MT_ECHO_RESPONSE;
-        if (gtp->seq.has_value())
-            gtpResponse.seq = gtp->seq.value();
-        gtpResponse.payload = OctetString::FromOctet2({14, 0});
 
-        OctetString gtpPdu;
-        if (!gtp::EncodeGtpMessage(gtpResponse, gtpPdu))
-            m_logger->err("Uplink data failure, GTP encoding failed");
-        else
-            m_udpServer->send(msg.fromAddress, gtpPdu);
-        return;
-    }
-    default: {
+    if (gtp->msgType != gtp::GtpMessage::MT_G_PDU)
+    {
         m_logger->err("Unhandled GTP-U message type: %d", gtp->msgType);
         return;
     }
+
+    //if (m_rateLimiter->allowDownlinkPacket(sessionInd, gtp->payload.length()))
+    {
+        auto w = std::make_unique<NmGnbGtpToRls>(NmGnbGtpToRls::DATA_PDU_DELIVERY);
+        w->ueId = GetUeId(sessionInd);
+        w->psi = GetPsi(sessionInd);
+        w->pdu = std::move(gtp->payload);
+        m_base->rlsTask->push(std::move(w));
     }
 }
 
@@ -271,8 +253,8 @@ void GtpTask::updateAmbrForUe(int ueId)
         return;
 
     auto &ue = m_ueContexts[ueId];
-    m_rateLimiter->updateUeUplinkLimit(ueId, ue->ueAmbr.ulAmbr);
-    m_rateLimiter->updateUeDownlinkLimit(ueId, ue->ueAmbr.dlAmbr);
+    //m_rateLimiter->updateUeUplinkLimit(ueId, ue->ueAmbr.ulAmbr);
+    //m_rateLimiter->updateUeDownlinkLimit(ueId, ue->ueAmbr.dlAmbr);
 }
 
 void GtpTask::updateAmbrForSession(uint64_t pduSession)
@@ -281,8 +263,8 @@ void GtpTask::updateAmbrForSession(uint64_t pduSession)
         return;
 
     auto &sess = m_pduSessions[pduSession];
-    m_rateLimiter->updateSessionUplinkLimit(pduSession, sess->sessionAmbr.ulAmbr);
-    m_rateLimiter->updateSessionDownlinkLimit(pduSession, sess->sessionAmbr.dlAmbr);
+    //m_rateLimiter->updateSessionUplinkLimit(pduSession, sess->sessionAmbr.ulAmbr);
+    //m_rateLimiter->updateSessionDownlinkLimit(pduSession, sess->sessionAmbr.dlAmbr);
 }
 
 } // namespace nr::gnb
